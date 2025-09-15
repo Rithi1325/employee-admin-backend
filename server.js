@@ -1,4 +1,4 @@
-// server.js - Complete Fixed Version
+// server.js - Complete Fixed Version with Full CORS Support
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -19,23 +19,53 @@ const __dirname = path.dirname(__filename);
 console.log('Starting server...');
 console.log('MongoDB URI:', process.env.MONGO_URI ? 'Present' : 'Missing');
 console.log('JWT Secret:', process.env.JWT_SECRET ? 'Present' : 'Missing');
+console.log('Environment:', process.env.NODE_ENV || 'development');
 
 // -------- Initialize app --------
 const app = express();
 
 // -------- Enhanced CORS configuration --------
-app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://localhost:3001', 
-    'http://localhost:5173',
-    'http://localhost:5174'
-  ],
+// List of allowed origins in production
+const allowedOrigins = [
+  'http://localhost:3000', 
+  'http://localhost:3001', 
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://your-netlify-site.netlify.app', // Replace with your actual Netlify URL
+  'https://your-production-domain.com'     // Add your production domain
+];
+
+// CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow all origins
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // In production, check against allowed origins
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'x-auth-token'],
-  exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type']
-}));
+  exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // -------- Middleware --------
 app.use(express.json({ limit: '50mb' }));
@@ -70,7 +100,6 @@ app.use(express.static(path.join(__dirname, "public")));
 export const protect = (req, res, next) => {
   const token = req.header("Authorization")?.replace("Bearer ", "") || req.header("x-auth-token");
   if (!token) return res.status(401).json({ msg: "No token, authorization denied" });
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded.user;
@@ -93,7 +122,6 @@ const connectDB = async () => {
     if (!process.env.MONGO_URI) {
       throw new Error('MONGO_URI environment variable is not defined');
     }
-
     mongoose.set("strictQuery", false);
     
     await mongoose.connect(process.env.MONGO_URI, {
@@ -120,7 +148,6 @@ const connectDB = async () => {
 
 // -------- Import Models after DB connection --------
 let User = null;
-
 const loadModels = async () => {
   try {
     const UserModel = await import("./models/User.js");
@@ -138,11 +165,9 @@ const createDefaultAdmin = async () => {
     if (!User) {
       throw new Error('User model not loaded');
     }
-
     if (!process.env.JWT_SECRET) {
       throw new Error('JWT_SECRET environment variable is not defined');
     }
-
     const adminExists = await User.findOne({ email: "admin@gmail.com" });
     if (!adminExists) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
@@ -208,7 +233,7 @@ const loadRoutes = async () => {
     { path: "./routes/dayBookRoutes.js", name: "dayBookRoutes", endpoint: "/api/daybook" },
     { path: "./routes/ledgerRoutes.js", name: "ledgerRoutes", endpoint: "/api/ledger" }
   ];
-
+  
   // Load each route
   for (const routeDef of routeDefinitions) {
     const handler = await importRoute(routeDef.path, routeDef.name);
@@ -232,7 +257,7 @@ const registerRoutes = async (routes) => {
   } else {
     console.error("❌ No auth routes found - this will cause login failures!");
   }
-
+  
   // Register trash routes with detailed logging
   if (routes.trashRoutes?.handler) {
     app.use("/api/trash", (req, res, next) => {
@@ -251,7 +276,7 @@ const registerRoutes = async (routes) => {
   } else {
     console.error("❌ TRASH ROUTES NOT FOUND - Trash functionality will not work!");
   }
-
+  
   // Register employee routes
   if (routes.employeeRoutes?.handler) {
     app.use("/api/employees", routes.employeeRoutes.handler);
@@ -259,7 +284,7 @@ const registerRoutes = async (routes) => {
   } else {
     console.warn("⚠️ No employee routes found");
   }
-
+  
   // Register all other routes
   Object.entries(routes).forEach(([routeName, routeData]) => {
     if (routeData.handler && routeData.endpoint && 
@@ -288,11 +313,19 @@ const registerRoutes = async (routes) => {
 
 // -------- Utility Routes --------
 const setupUtilityRoutes = () => {
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.headers.origin || 'Unknown'}`);
+    next();
+  });
+
   app.get('/', (req, res) => {
     res.json({ 
       message: '🏆 Loan & Jewelry Management API is running...', 
       version: '2.0.1',
       timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      allowedOrigins: process.env.NODE_ENV === 'production' ? allowedOrigins : ['All origins in development'],
       endpoints: {
         health: '/health',
         apiStatus: '/api-status',
@@ -369,7 +402,7 @@ const setupUtilityRoutes = () => {
           userModelTest = `Error: ${error.message}`;
         }
       }
-
+      
       let trashModelTest = 'Not available';
       try {
         const Trash = (await import('./models/Trash.js')).default;
@@ -378,7 +411,7 @@ const setupUtilityRoutes = () => {
       } catch (error) {
         trashModelTest = `Error: ${error.message}`;
       }
-
+      
       res.json({
         status: 'healthy',
         uptime: Math.floor(process.uptime()),
@@ -408,10 +441,10 @@ const setupUtilityRoutes = () => {
           message: 'Database not connected'
         });
       }
-
+      
       const collections = await mongoose.connection.db.listCollections().toArray();
       const collectionInfo = {};
-
+      
       for (const collection of collections) {
         try {
           const count = await mongoose.connection.db.collection(collection.name).countDocuments();
@@ -427,7 +460,7 @@ const setupUtilityRoutes = () => {
           };
         }
       }
-
+      
       res.json({
         success: true,
         database: mongoose.connection.db.databaseName,
@@ -436,7 +469,6 @@ const setupUtilityRoutes = () => {
         trashCollection: collectionInfo.trashes || { message: 'No trash collection found' },
         timestamp: new Date().toISOString()
       });
-
     } catch (error) {
       res.status(500).json({
         success: false,
@@ -525,7 +557,7 @@ const setupUtilityRoutes = () => {
       { name: 'Overview', path: '/api/overview', status: 'active' },
       { name: 'Trash', path: '/api/trash', status: 'active' }
     ];
-
+    
     res.json({
       success: true,
       apiStatus: 'running',
@@ -608,7 +640,7 @@ const startServer = async () => {
       console.log('\n✅ All systems operational!');
       console.log('🎉 ================================\n');
     });
-
+    
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         console.error(`❌ Port ${PORT} is already in use. Please free the port or choose another.`);
@@ -618,7 +650,7 @@ const startServer = async () => {
         process.exit(1);
       }
     });
-
+    
     const gracefulShutdown = (signal) => {
       console.log(`Received ${signal}. Performing graceful shutdown...`);
       server.close(() => {
@@ -629,7 +661,7 @@ const startServer = async () => {
         });
       });
     };
-
+    
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     
@@ -637,12 +669,12 @@ const startServer = async () => {
       console.error('❌ Uncaught Exception:', err);
       process.exit(1);
     });
-
+    
     process.on('unhandledRejection', (err) => {
       console.error('❌ Unhandled Rejection:', err);
       process.exit(1);
     });
-
+    
     return server;
     
   } catch (error) {
@@ -659,5 +691,4 @@ const startServer = async () => {
 };
 
 startServer();
-
 export default app;
