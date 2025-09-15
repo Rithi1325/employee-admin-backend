@@ -1,4 +1,4 @@
-import PersonalLoan from "../models/personalloan.js";
+import PersonalLoan from "../models/PersonalLoan.js";
 
 // Helper function to calculate installments
 const calculateInstallments = (loanAmount, interestRate, numberOfInstallments, installmentFrequency, startDate) => {
