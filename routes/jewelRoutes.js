@@ -1,5 +1,5 @@
 import express from "express";
-import Jewel from "../models/Jewel.js";
+import Jewel from "../models/jewel.js";
 import Trash from "../models/Trash.js"; // ✅ now points to correct file
 
 const router = express.Router();

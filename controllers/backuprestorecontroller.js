@@ -61,7 +61,7 @@ const loadModels = async () => {
     
     // Load other models
     Customer = await importModel('../models/Customer.js', 'Customer');
-    Jewel = await importModel('../models/Jewel.js', 'Jewel');
+    Jewel = await importModel('../models/jewel.js', 'Jewel');
     Voucher = await importModel('../models/Voucher.js', 'Voucher');
     Employee = await importModel('../models/Employee.js', 'Employee');
     

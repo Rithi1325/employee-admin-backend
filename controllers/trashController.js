@@ -29,7 +29,7 @@ export const restoreFromTrash = async (req, res) => {
         break;
       }
       case "jewel": {
-        const Jewel = (await import("../models/Jewel.js")).default;
+        const Jewel = (await import("../models/jewel.js")).default;
         restoredItem = await Jewel.create(item.data);
         break;
       }
