@@ -8,69 +8,34 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
 // -------- Load env variables first --------
 dotenv.config();
-
 // -------- Fix __dirname in ES Modules --------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 console.log('Starting server...');
 console.log('MongoDB URI:', process.env.MONGO_URI ? 'Present' : 'Missing');
 console.log('JWT Secret:', process.env.JWT_SECRET ? 'Present' : 'Missing');
 console.log('Environment:', process.env.NODE_ENV || 'development');
-
 // -------- Initialize app --------
 const app = express();
-
 // -------- Enhanced CORS configuration --------
-// List of allowed origins in production
-const allowedOrigins = [
-  'http://localhost:3000', 
-  'http://localhost:3001', 
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'https://your-netlify-site.netlify.app', // Replace with your actual Netlify URL
-  'https://your-production-domain.com'     // Add your production domain
-];
-
-// CORS configuration
+// CORS configuration to allow all origins
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or Postman)
-    if (!origin) return callback(null, true);
-    
-    // In development, allow all origins
-    if (process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    // In production, check against allowed origins
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    } else {
-      console.log(`CORS blocked origin: ${origin}`);
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: '*', // Allow all origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'x-auth-token'],
   exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
   optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 };
-
 // Apply CORS middleware
 app.use(cors(corsOptions));
-
 // Handle preflight requests
 app.options('*', cors(corsOptions));
-
 // -------- Middleware --------
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
 // -------- Create necessary directories --------
 const createDirectories = () => {
   const dirs = [
@@ -89,13 +54,11 @@ const createDirectories = () => {
   });
 };
 createDirectories();
-
 // -------- Serve static files --------
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/uploads", express.static(path.join(__dirname, "Uploads")));
 app.use("/temp", express.static(path.join(__dirname, "temp")));
 app.use(express.static(path.join(__dirname, "public")));
-
 // -------- JWT & Admin Middleware --------
 export const protect = (req, res, next) => {
   const token = req.header("Authorization")?.replace("Bearer ", "") || req.header("x-auth-token");
@@ -108,14 +71,12 @@ export const protect = (req, res, next) => {
     res.status(401).json({ msg: "Token is not valid" });
   }
 };
-
 export const authorize = (req, res, next) => {
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ msg: "Access denied. Admin privileges required." });
   }
   next();
 };
-
 // -------- Database Connection --------
 const connectDB = async () => {
   try {
@@ -145,7 +106,6 @@ const connectDB = async () => {
     throw err;
   }
 };
-
 // -------- Import Models after DB connection --------
 let User = null;
 const loadModels = async () => {
@@ -158,7 +118,6 @@ const loadModels = async () => {
     throw err;
   }
 };
-
 // -------- Create Default Admin --------
 const createDefaultAdmin = async () => {
   try {
@@ -188,7 +147,6 @@ const createDefaultAdmin = async () => {
     throw err;
   }
 };
-
 // -------- Import optional dynamic routes --------
 const importRoute = async (routePath, routeName) => {
   try {
@@ -205,7 +163,6 @@ const importRoute = async (routePath, routeName) => {
     return null;
   }
 };
-
 // -------- Load all routes (ONLY EXISTING FILES) --------
 const loadRoutes = async () => {
   const routes = {};
@@ -245,7 +202,6 @@ const loadRoutes = async () => {
   
   return routes;
 };
-
 // -------- Register all routes --------
 const registerRoutes = async (routes) => {
   console.log('Registering routes...');
@@ -310,7 +266,6 @@ const registerRoutes = async (routes) => {
     }
   });
 };
-
 // -------- Utility Routes --------
 const setupUtilityRoutes = () => {
   // Request logging middleware
@@ -318,14 +273,13 @@ const setupUtilityRoutes = () => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.headers.origin || 'Unknown'}`);
     next();
   });
-
   app.get('/', (req, res) => {
     res.json({ 
       message: '🏆 Loan & Jewelry Management API is running...', 
       version: '2.0.1',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
-      allowedOrigins: process.env.NODE_ENV === 'production' ? allowedOrigins : ['All origins in development'],
+      corsPolicy: 'All origins allowed (*)',
       endpoints: {
         health: '/health',
         apiStatus: '/api-status',
@@ -351,7 +305,6 @@ const setupUtilityRoutes = () => {
       status: 'Running'
     });
   });
-
   app.get('/test-trash', async (req, res) => {
     try {
       const trashController = await import('./controllers/trashController.js');
@@ -374,7 +327,6 @@ const setupUtilityRoutes = () => {
       });
     }
   });
-
   app.get('/test-auth', (req, res) => {
     res.json({
       message: 'Auth test endpoint',
@@ -388,7 +340,6 @@ const setupUtilityRoutes = () => {
       }
     });
   });
-
   app.get('/health', async (req, res) => {
     try {
       const dbStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
@@ -422,7 +373,8 @@ const setupUtilityRoutes = () => {
         userModel: userModelTest,
         trashModel: trashModelTest,
         jwtSecret: process.env.JWT_SECRET ? 'Present' : 'Missing',
-        mongoUri: process.env.MONGO_URI ? 'Present' : 'Missing'
+        mongoUri: process.env.MONGO_URI ? 'Present' : 'Missing',
+        corsPolicy: 'All origins allowed (*)'
       });
     } catch (error) {
       res.status(500).json({
@@ -432,7 +384,6 @@ const setupUtilityRoutes = () => {
       });
     }
   });
-
   app.get('/db-info', async (req, res) => {
     try {
       if (mongoose.connection.readyState !== 1) {
@@ -477,7 +428,6 @@ const setupUtilityRoutes = () => {
       });
     }
   });
-
   app.get('/init-stock', async (req, res) => {
     try {
       console.log('Initializing stock summary...');
@@ -512,7 +462,6 @@ const setupUtilityRoutes = () => {
       });
     }
   });
-
   app.get('/test-stock', async (req, res) => {
     try {
       const { getStockSummary } = await import('./controllers/stockSummaryController.js');
@@ -543,7 +492,6 @@ const setupUtilityRoutes = () => {
       });
     }
   });
-
   app.get('/api-status', (req, res) => {
     const routes = [
       { name: 'Authentication', path: '/api/auth', status: 'active' },
@@ -561,13 +509,13 @@ const setupUtilityRoutes = () => {
     res.json({
       success: true,
       apiStatus: 'running',
+      corsPolicy: 'All origins allowed (*)',
       routes: routes,
       timestamp: new Date().toISOString(),
       version: '2.0.1'
     });
   });
 };
-
 // -------- Error handling middleware --------
 const setupErrorHandling = () => {
   app.use((err, req, res, next) => {
@@ -586,7 +534,6 @@ const setupErrorHandling = () => {
       path: req.path
     });
   });
-
   app.use((req, res) => {
     console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`);
     res.status(404).json({
@@ -596,7 +543,6 @@ const setupErrorHandling = () => {
     });
   });
 };
-
 // -------- Main startup function --------
 const startServer = async () => {
   try {
@@ -638,6 +584,7 @@ const startServer = async () => {
       console.log('   📧 Email: admin@gmail.com');
       console.log('   🔑 Password: admin123');
       console.log('\n✅ All systems operational!');
+      console.log('🌐 CORS Policy: All origins allowed (*)');
       console.log('🎉 ================================\n');
     });
     
@@ -689,6 +636,5 @@ const startServer = async () => {
     process.exit(1);
   }
 };
-
 startServer();
 export default app;
